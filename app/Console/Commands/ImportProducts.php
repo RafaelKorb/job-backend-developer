@@ -17,7 +17,7 @@ class ImportProducts extends Command
      *
      * @var string
      */
-    protected $signature = 'products:import';
+    protected $signature = 'products:import {--id=}';
 
     /**
      * The console command description.
@@ -33,8 +33,39 @@ class ImportProducts extends Command
      */
     public function handle(CreateProductService $createProductService, Product $product)
     {
-        $response = Http::get('https://fakestoreapi.com/products');
         $names = $product->pluck('name')->toArray();
+        if ($this->option('id')) {
+            return $this->createSingleProduct($createProductService, $names);
+        }
+        return $this->createMultipleProducts($createProductService, $names);
+    }
+
+    private function getSingleProduct($productId)
+    {
+        $response = Http::get('https://fakestoreapi.com/products/' . $productId);
+        return $response;
+    }
+
+    private function createSingleProduct(CreateProductService $createProductService, array $names)
+    {
+        $apiProduct = $this->getSingleProduct($this->option('id'));
+        if ($apiProduct->status() === 200) {
+            $arrayProduct = $apiProduct->json();
+            if (!in_array($arrayProduct['title'], $names)) {
+                $arrayProduct['name'] = $arrayProduct['title'];
+                unset($arrayProduct['id'], $arrayProduct['rating'], $arrayProduct['title']);
+                $createProductService($arrayProduct);
+            }
+            $this->info('Produto importado com sucesso!');
+            return $apiProduct->json();
+        }
+        $this->info('Erro ao importar os produtos, a API respondeu com status ' . $apiProduct->status());
+        return $apiProduct->json();
+    }
+
+    private function createMultipleProducts(CreateProductService $createProductService, array $names)
+    {
+        $response = Http::get('https://fakestoreapi.com/products');
         if ($response->status() === 200) {
             foreach ($response->json() as $product) {
                 if (!in_array($product['title'], $names)) {
